@@ -20,13 +20,15 @@
         "host": "",
         "db_name": "",
         "ssl_mode": "",
-        "port": 5432
+        "port": 5432,
+        "db_type": "postgres"
      },
      "destination_db_connection_info": {
         "user_name": "",
         "host": "",
         "db_name": "",
         "ssl_mode": "",
-        "port": 5432
+        "port": 3306,
+        "db_type": "mysql"
      }
  }
