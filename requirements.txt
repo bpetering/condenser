@@ -1,3 +1,4 @@
 toposort
 scipy
 psycopg2-binary
+mysqlclient
