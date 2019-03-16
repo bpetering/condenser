@@ -1,0 +1,13 @@
+# Access via "http://localhost:8080"
+#   (or "http://$(docker-machine ip):8080" if using docker-machine)
+version: '3'
+services:
+  subset:
+    image: mariadb:latest
+    restart: always
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_PASSWORD: password
+      MUSQL_USER: user
+      MYSQL_DATABASE: subset
