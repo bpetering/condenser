@@ -2,6 +2,8 @@ import os, urllib
 from db_connect import DbConnect
 from psql_runner import PsqlRunner
 from psql_runner import get_pg_bin_path
+from mysql_runner import MysqlRunner
+from mysql_runner import get_mysql_bin_path
 from database_helper import list_all_user_schemas
 
 class DatabaseCreator:
@@ -11,7 +13,10 @@ class DatabaseCreator:
         self.__source_db_connection = source_dbc.get_db_connection()
 
         self.use_existing_dump = use_existing_dump
-        self.destination_psql_client = PsqlRunner(self.destination_connection_info)
+        if self.destination_connection_info['db_type'] == 'mysql':
+            self.destination_client = MysqlRunner(self.destination_connection_info)
+        else:
+            self.destination_client = PsqlRunner(self.destination_connection_info)
 
         self.output_path = os.path.join(os.getcwd(),'SQL')
         if not os.path.isdir(self.output_path):
@@ -43,18 +48,42 @@ class DatabaseCreator:
         else:
             cur_path = os.getcwd()
 
-            pg_dump_path = get_pg_bin_path()
-            if pg_dump_path != '':
-                os.chdir(pg_dump_path)
+            if self.source_connection_info['db_type'] == 'mysql':
+                dump_path = get_mysql_bin_path()
+            else:
+                dump_path = get_pg_bin_path()
 
-            pg_dumpsql_path = os.path.join(self.output_path, 'schema_dump.sql')
-            os.system('pg_dump --dbname=postgresql://{0}@{2}:{3}/{4}?{1} > {5} --schema-only --no-owner --no-privileges'
-                    .format(self.source_connection_info['user_name'], urllib.parse.urlencode({'password': self.source_connection_info['password']}), self.source_connection_info['host'], self.source_connection_info['port'], self.source_connection_info['db_name'], pg_dumpsql_path))
+            if dump_path != '':
+                os.chdir(dump_path)
+
+            dumpsql_path = os.path.join(self.output_path, 'schema_dump.sql')
+            if self.source_connection_info['db_type'] == 'mysql':
+                os.system('mysqldump -h {0} -P {1} -u {2} -p{3} --no-data {4} > {5}'
+                    .format(
+                        self.source_connection_info['host'],
+                        self.source_connection_info['port'],
+                        self.source_connection_info['user_name'],
+                        self.source_connection_info['password'],
+                        self.source_connection_info['db_name'],
+                        dumpsql_path
+                    )
+                )
+            else:
+                os.system('pg_dump --dbname=postgresql://{0}@{2}:{3}/{4}?{1} > {5} --schema-only --no-owner --no-privileges'
+                    .format(
+                        self.source_connection_info['user_name'], 
+                        urllib.parse.urlencode({'password': self.source_connection_info['password']}), 
+                        self.source_connection_info['host'], 
+                        self.source_connection_info['port'], 
+                        self.source_connection_info['db_name'], 
+                        dumpsql_path
+                    )
+                )
 
             os.chdir(cur_path)
 
             self.__filter_commands(self.output_path)
-            self.destination_psql_client.run(os.path.join(self.output_path, 'dump_create.sql'), self.create_output_path, self.create_error_path, True, True)
+            self.destination_client.run(os.path.join(self.output_path, 'dump_create.sql'), self.create_output_path, self.create_error_path, True, True)
 
     def teardown(self):
         user_schemas = list_all_user_schemas(self.__source_db_connection)
@@ -70,17 +99,17 @@ class DatabaseCreator:
         q = ';'.join(drop_statements)
         q += "DROP SCHEMA IF EXISTS public CASCADE;CREATE SCHEMA IF NOT EXISTS public;"
 
-        self.destination_psql_client.run_query(q)
+        self.destination_client.run_query(q)
 
         q = 'DROP SCHEMA IF EXISTS {schema} CASCADE;CREATE SCHEMA IF NOT EXISTS {schema};'.format(schema=self.temp_schema)
-        self.destination_psql_client.run_query(q)
+        self.destination_client.run_query(q)
 
     def add_constraints(self):
-        self.destination_psql_client.run(os.path.join(self.output_path, 'dump_constraints_unique.sql'), self.add_constraint_output_path,  self.add_constraint_error_path, False, False )
-        self.destination_psql_client.run(os.path.join(self.output_path, 'dump_constraints_pk.sql'), self.add_constraint_output_path,  self.add_constraint_error_path, False, False )
-        self.destination_psql_client.run(os.path.join(self.output_path, 'dump_constraints_create_unique.sql'), self.add_constraint_output_path,  self.add_constraint_error_path, False, False )
-        self.destination_psql_client.run(os.path.join(self.output_path, 'dump_constraints_fk.sql'), self.add_constraint_output_path,  self.add_constraint_error_path, False, False )
-        self.destination_psql_client.run(os.path.join(self.output_path, 'dump_constraints_other.sql'), self.add_constraint_output_path,  self.add_constraint_error_path, False, False )
+        self.destination_client.run(os.path.join(self.output_path, 'dump_constraints_unique.sql'), self.add_constraint_output_path,  self.add_constraint_error_path, False, False )
+        self.destination_client.run(os.path.join(self.output_path, 'dump_constraints_pk.sql'), self.add_constraint_output_path,  self.add_constraint_error_path, False, False )
+        self.destination_client.run(os.path.join(self.output_path, 'dump_constraints_create_unique.sql'), self.add_constraint_output_path,  self.add_constraint_error_path, False, False )
+        self.destination_client.run(os.path.join(self.output_path, 'dump_constraints_fk.sql'), self.add_constraint_output_path,  self.add_constraint_error_path, False, False )
+        self.destination_client.run(os.path.join(self.output_path, 'dump_constraints_other.sql'), self.add_constraint_output_path,  self.add_constraint_error_path, False, False )
 
     def validate_database_create(self):
         with open(self.create_error_path,'r',encoding='utf-8') as fp:
