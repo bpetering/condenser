@@ -1,4 +1,5 @@
 import psycopg2
+import MySQLdb
 import os.path
 import json
 import getpass
@@ -29,12 +30,30 @@ class DbConnect:
         ssl_mode = self.connection_info['ssl_mode'] if 'ssl_mode' in self.connection_info else None
         password = self.connection_info['password']
         port = self.connection_info['port']
+        db_type = self.connection_info['db_type'] if 'db_type' in self.connection_info else 'postgres'
 
-        connection_string = 'dbname={0} user={1} password={2} host={3} port={4}'.format(db_name, user_name, password, host, port)
-        if ssl_mode :
-            connection_string = connection_string + ' sslmode={0}'.format(ssl_mode)
+        if db_type == 'mysql':
+            return MySQLdb.connect(
+                    host=host,
+                    port=port,
+                    user=user_name, 
+                    passwd=password, 
+                    db=db_name
+                    )
+            # TODO ssl_mode
+        else:
+            connection_string = 'dbname={0} user={1} password={2} host={3} port={4}'.format(
+                db_name, 
+                user_name, 
+                password, 
+                host, 
+                port
+            )
+            if ssl_mode :
+                connection_string = connection_string + ' sslmode={0}'.format(ssl_mode)
 
-        return psycopg2.connect(connection_string)
+            return psycopg2.connect(connection_string)
+        
 
     def get_db_connection_info(self):
         return self.connection_info
