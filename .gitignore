@@ -4,3 +4,5 @@ __pycache__/
 config.json
 *.json
 SQL/
+mysql_test*
+TODO_MYSQL
