@@ -32,9 +32,11 @@ class Subset:
         if len(sampled_tables) == 0:
             return
 
+        source_db_type = self.__source_dbc.get_db_type()
+
         for t in sampled_tables:
             columns_query = self.__columns_to_copy(t, relationships)
-            if self.__source_dbc.get_db_type() == 'mysql':
+            if source_db_type == 'mysql':
                 rand_func = 'rand'
             else:
                 rand_func = 'random'
@@ -46,12 +48,26 @@ class Subset:
                     rand_func, 
                     scalePercent/100
                 )
-            database_helper.copy_rows(self.__source_conn, self.__destination_conn, q, table_name(t), schema_name(t))
+            database_helper.copy_rows(
+                self.__source_conn,
+                self.__destination_conn, 
+                q, 
+                table_name(t), 
+                schema_name(t),
+                source_db_type
+            )
 
         for t in passthrough_tables:
             #copy passthrough tables directly to new database
             q = 'SELECT * FROM "{}"."{}"'.format(schema_name(t), table_name(t))
-            database_helper.copy_rows(self.__source_conn, self.__destination_conn, q, table_name(t), schema_name(t))
+            database_helper.copy_rows(
+                self.__source_conn, 
+                self.__destination_conn, 
+                q, 
+                table_name(t), 
+                schema_name(t),
+                source_db_type
+            )
 
         for c in range(1, len(order)):
 
@@ -63,12 +79,15 @@ class Subset:
 
         database_helper.run_query('DROP SCHEMA IF EXISTS {} CASCADE'.format(self.temp_schema), self.__destination_conn)
 
+
     def run_middle_out(self):
         relationships = database_helper.get_fk_relationships(self.__all_tables, self.__source_conn)
         disconnected_tables = compute_disconnected_tables(config_reader.get_target_table(), self.__all_tables, relationships)
         connected_tables = [table for table in self.__all_tables if table not in disconnected_tables]
         order = get_topological_order_by_tables(relationships, connected_tables)
         order = list(order)
+
+        source_db_type = self.__source_dbc.get_db_type()
 
         database_helper.run_query('CREATE SCHEMA IF NOT EXISTS {}'.format(self.temp_schema), self.__destination_conn)
 
@@ -78,7 +97,7 @@ class Subset:
         start_time = time.time()
         for t in targets:
             columns_query = self.__columns_to_copy(t, relationships)
-            if self.__source_dbc.get_db_type() == 'mysql':
+            if source_db_type == 'mysql':
                 rand_func = 'rand'
             else:
                 rand_func = 'random'
@@ -90,7 +109,14 @@ class Subset:
                     rand_func,
                     targets[t]/100
                 )
-            database_helper.copy_rows(self.__source_conn, self.__destination_conn, q, table_name(t), schema_name(t))
+            database_helper.copy_rows(
+                self.__source_conn, 
+                self.__destination_conn, 
+                q, 
+                table_name(t), 
+                schema_name(t),
+                source_db_type
+            )
         print('Direct target tables completed in {}s'.format(time.time()-start_time))
 
 
@@ -118,23 +144,40 @@ class Subset:
         start_time = time.time()
         for t in disconnected_tables:
             q = 'SELECT * FROM "{}"."{}"'.format(schema_name(t), table_name(t))
-            database_helper.copy_rows(self.__source_conn, self.__destination_conn, q, table_name(t), schema_name(t))
+            database_helper.copy_rows(
+                self.__source_conn, 
+                self.__destination_conn, 
+                q, 
+                table_name(t), 
+                schema_name(t),
+                source_db_type
+            )
         print('Disconnected tables completed in {}s'.format(time.time()-start_time))
 
         # clean out the temp schema
         database_helper.run_query('DROP SCHEMA IF EXISTS {} CASCADE;'.format(self.temp_schema), self.__destination_conn)
+
 
     def __subset_greedily(self, target, processed_tables, relationships):
 
         destination_conn = self.__destination_dbc.get_db_connection()
         temp_target_name = 'subset_temp_' + table_name(target)
 
+        source_db_type = self.__source_dbc.get_db_type()
+
         try:
             # copy the whole table
             columns_query = self.__columns_to_copy(target, relationships)
             database_helper.run_query('CREATE TABLE "{}"."{}" AS SELECT * FROM "{}"."{}" LIMIT 0'.format(self.temp_schema, temp_target_name, schema_name(target), table_name(target)), destination_conn)
             query = 'SELECT {} FROM "{}"."{}"'.format(columns_query, schema_name(target), table_name(target))
-            database_helper.copy_rows(self.__source_conn, destination_conn, query, temp_target_name, self.temp_schema)
+            database_helper.copy_rows(
+                self.__source_conn, 
+                destination_conn, 
+                query, 
+                temp_target_name, 
+                self.temp_schema,
+                source_db_type
+            )
 
             # filter it down in the target database
             relevant_key_constraints = list(filter(lambda r: r["child_table_name"] in processed_tables and r["parent_table_name"] == target, relationships))
@@ -182,6 +225,8 @@ class Subset:
     def subset_via_parents(self, table, relationships):
         referencing_tables = database_helper.get_referencing_tables(table, self.__all_tables, self.__source_conn)
 
+        source_db_type = self.__source_dbc.get_db_type()
+
         # Rather than using different types in different DBs, just use 'text'
         temp_table_name =
         database_helper.create_id_temp_table(
@@ -198,38 +243,83 @@ class Subset:
             fk_name = r['fk_column_name']
 
             q='SELECT "{}" FROM "{}"."{}"'.format(fk_name, schema_name(parent_table), table_name(parent_table))
-            database_helper.copy_rows(self.__destination_conn, self.__destination_conn, q, temp_table_name, self.temp_schema)
+            database_helper.copy_rows(
+                self.__destination_conn, 
+                self.__destination_conn, 
+                q,
+                temp_table_name, 
+                self.temp_schema,
+                source_db_type
+            )
 
 
         cursor = self.__destination_conn.cursor()
-        cursor_name='table_cursor_'+str(uuid.uuid4()).replace('-','')
-        q ='DECLARE {} SCROLL CURSOR FOR SELECT DISTINCT t FROM "{}"."{}"'.format(cursor_name, self.temp_schema, temp_table_name)
-        cursor.execute(q)
 
-        fetch_row_count = 10000
-        while True:
-            # If the DB has 'FETCH FORWARD n' support, use it, otherwise do the slow equivalent
-            dest_conn_info = self.__destination_dbc.get_db_connection_info()
-            if dest_conn_info['db_type'] == 'mysql':
-                pass
-            else:
-            cursor.execute('FETCH FORWARD {} FROM {}'.format(fetch_row_count, cursor_name))
+        if self.__destination_dbc.get_db_type() == 'mysql':
+            # TODO is there any use to using a MySQL stored procedure w CURSOR? 
+            # TODO in any case, pick the the best combination of performance and server
+            # non-interference
+            # TODO use LIMIT/OFFSET?
+            q = 'SELECT DISTINCT t FROM "{}"."{}"'.format(self.temp_schema, temp_table_name)
+            cursor.execute(q)
             if cursor.rowcount == 0:
-                break
-
+                cursor.close()
+                return
+            
             ids = ["'" + str(row[0]) + "'" for row in cursor.fetchall() if row[0] is not None]
 
             if len(ids) == 0:
                 break
 
+            # TODO create function 
             ids_to_query = ','.join(ids)
             columns_query = self.__columns_to_copy(table, relationships)
             q = 'SELECT {} FROM "{}"."{}" WHERE {} IN ({})'.format(columns_query, schema_name(table), table_name(table), pk_name, ids_to_query)
             temp_destination_conn = self.__destination_dbc.get_db_connection()
-            database_helper.copy_rows(self.__source_conn, temp_destination_conn, q, table_name(table), schema_name(table))
+            database_helper.copy_rows(
+                self.__source_conn, 
+                temp_destination_conn, 
+                q, 
+                table_name(table), 
+                schema_name(table),
+                source_db_type
+            )
             temp_destination_conn.close()
 
-        cursor.execute('CLOSE {}'.format(cursor_name))
+        else:
+
+            cursor_name='table_cursor_'+str(uuid.uuid4()).replace('-','')
+            q ='DECLARE {} SCROLL CURSOR FOR SELECT DISTINCT t FROM "{}"."{}"'.format(cursor_name, self.temp_schema, temp_table_name)
+            cursor.execute(q)
+    
+            fetch_row_count = 10000
+            while True:
+                cursor.execute('FETCH FORWARD {} FROM {}'.format(fetch_row_count, cursor_name))
+                if cursor.rowcount == 0:
+                    break
+    
+                ids = ["'" + str(row[0]) + "'" for row in cursor.fetchall() if row[0] is not None]
+    
+                if len(ids) == 0:
+                    break
+    
+                # TODO create function
+                ids_to_query = ','.join(ids)
+                columns_query = self.__columns_to_copy(table, relationships)
+                q = 'SELECT {} FROM "{}"."{}" WHERE {} IN ({})'.format(columns_query, schema_name(table), table_name(table), pk_name, ids_to_query)
+                temp_destination_conn = self.__destination_dbc.get_db_connection()
+                database_helper.copy_rows(
+                    self.__source_conn, 
+                    temp_destination_conn, 
+                    q, 
+                    table_name(table), 
+                    schema_name(table),
+                    source_db_type
+                )
+                temp_destination_conn.close()
+    
+            cursor.execute('CLOSE {}'.format(cursor_name))
+
         cursor.close()
 
     # this function generally copies all columns as is, but if the table has been selected as
