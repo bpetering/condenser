@@ -59,6 +59,7 @@ class DatabaseCreator:
 
             dumpsql_path = os.path.join(self.output_path, 'schema_dump.sql')
             if self.__source_dbc.get_db_type() == 'mysql':
+                # TODO do we need to support user/priv stuff in mysql here?
                 os.system('mysqldump -h {0} -P {1} -u {2} -p{3} --no-data {4} > {5}'
                     .format(
                         self.source_connection_info['host'],

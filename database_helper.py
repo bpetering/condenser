@@ -8,14 +8,16 @@ import mysql_extras
 register_default_json(loads=lambda x: x)
 register_default_jsonb(loads=lambda x: x)
 
-def copy_rows(source, destination, query, destination_table, destination_schema):
+
+def copy_rows(source, destination, query, destination_table,
+        destination_schema, source_db_type):
 
     cursor = source.cursor()
 
     # TODO is there any use to using a MySQL stored procedure w CURSOR? 
     # TODO in any case, pick the the best combination of performance and server
     # non-interference
-    if source.__class__ == MySQLdb.connections.Connection:
+    if source_db_type == 'mysql':
         # TODO use LIMIT/OFFSET?
         cursor.execute(query)
         destination_cursor = destination.cursor() 
