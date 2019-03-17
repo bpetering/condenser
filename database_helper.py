@@ -11,13 +11,12 @@ register_default_jsonb(loads=lambda x: x)
 def copy_rows(source, destination, query, destination_table, destination_schema):
 
     cursor = source.cursor()
-    cursor_name='table_cursor_'+str(uuid.uuid4()).replace('-','')
 
-    # TODO use better, global way of keeping track of db type in use
-    # TODO how many times is this called? can we use a stored procedure w CURSOR for mysql?
+    # TODO is there any use to using a MySQL stored procedure w CURSOR? 
+    # TODO in any case, pick the the best combination of performance and server
+    # non-interference
     if source.__class__ == MySQLdb.connections.Connection:
-        # Do it the slow way for MySQL
-        # TODO probably want to use SQL LIMIT/OFFSET
+        # TODO use LIMIT/OFFSET?
         cursor.execute(query)
         destination_cursor = destination.cursor() 
 
@@ -31,6 +30,7 @@ def copy_rows(source, destination, query, destination_table, destination_schema)
 
     else:
         # Postgres
+        cursor_name='table_cursor_'+str(uuid.uuid4()).replace('-','')
         q = 'DECLARE {} SCROLL CURSOR FOR {}'.format(cursor_name, query)
         cursor.execute(q)
 
