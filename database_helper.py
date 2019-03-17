@@ -1,36 +1,60 @@
 import os, uuid, csv
 import config_reader
 from pathlib import Path
+
 from psycopg2.extras import execute_values, register_default_json, register_default_jsonb
+import mysql_extras
 
 register_default_json(loads=lambda x: x)
 register_default_jsonb(loads=lambda x: x)
 
 def copy_rows(source, destination, query, destination_table, destination_schema):
+
     cursor = source.cursor()
     cursor_name='table_cursor_'+str(uuid.uuid4()).replace('-','')
-    q ='DECLARE {} SCROLL CURSOR FOR {}'.format(cursor_name, query)
-    cursor.execute(q)
 
-    fetch_row_count = 10000
-    while True:
-        cursor.execute('FETCH FORWARD {} FROM {}'.format(fetch_row_count, cursor_name))
-        if cursor.rowcount == 0:
-            break
+    # TODO use better, global way of keeping track of db type in use
+    # TODO how many times is this called? can we use a stored procedure w CURSOR for mysql?
+    if source.__class__ == MySQLdb.connections.Connection:
+        # Do it the slow way for MySQL
+        # TODO probably want to use SQL LIMIT/OFFSET
+        cursor.execute(query)
+        destination_cursor = destination.cursor() 
 
-        destination_cursor = destination.cursor()
-
-        execute_values(destination_cursor, 'INSERT INTO "{}"."{}" VALUES %s'.format(destination_schema, destination_table), cursor.fetchall())
+        mysql_extras.execute_values(
+            destination_cursor, 
+            'INSERT INTO "{}"."{}" VALUES %s'.format(destination_schema, destination_table), 
+            cursor.fetchall()
+        )
 
         destination_cursor.close()
 
-    cursor.execute('CLOSE {}'.format(cursor_name))
+    else:
+        # Postgres
+        q = 'DECLARE {} SCROLL CURSOR FOR {}'.format(cursor_name, query)
+        cursor.execute(q)
+
+        fetch_row_count = 10000
+        while True:
+            cursor.execute('FETCH FORWARD {} FROM {}'.format(fetch_row_count, cursor_name))
+            if cursor.rowcount == 0:
+                break
+
+            destination_cursor = destination.cursor()
+
+            execute_values(destination_cursor, 'INSERT INTO "{}"."{}" VALUES %s'.format(destination_schema, destination_table), cursor.fetchall())
+
+            destination_cursor.close()
+
+        cursor.execute('CLOSE {}'.format(cursor_name))
+
     cursor.close()
     destination.commit()
 
 def create_id_temp_table(conn, schema, col_type):
     table_name = 'temp_table_' + str(uuid.uuid4())
     cursor = conn.cursor()
+    # TODO mysql just needs varchar(50) instead of only 'varchar'
     q = 'CREATE TABLE "{}"."{}" (\n t    {}\n)'.format(schema, table_name, col_type)
     cursor.execute(q)
     cursor.close()
@@ -42,6 +66,8 @@ def get_referencing_tables(table_name, tables, conn):
 def get_fk_relationships(tables, conn):
     cur = conn.cursor()
 
+    # TODO most of this works in mysql - but information_schema.constraint_column_usage 
+    # doesn't exist
     q = """
     SELECT
         concat(concat(tc.table_schema, '.'),tc.table_name) as table_name,
@@ -82,6 +108,7 @@ def get_fk_relationships(tables, conn):
     cur.close()
     return relationships
 
+
 def run_query(query, conn):
     cur = conn.cursor()
     cur.execute(query)
@@ -89,6 +116,7 @@ def run_query(query, conn):
     cur.close()
 
 
+# TODO These should all work fine for mysql except list_all_user_schemas
 def get_table_count(table_name, schema, conn):
     with conn.cursor() as cur:
         cur.execute('SELECT COUNT(*) FROM "{}"."{}"'.format(schema, table_name))
