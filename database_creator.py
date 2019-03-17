@@ -11,9 +11,10 @@ class DatabaseCreator:
         self.destination_connection_info = destination_dbc.get_db_connection_info()
         self.source_connection_info = source_dbc.get_db_connection_info()
         self.__source_db_connection = source_dbc.get_db_connection()
+        self.__source_dbc = source_dbc
 
         self.use_existing_dump = use_existing_dump
-        if self.destination_connection_info['db_type'] == 'mysql':
+        if destination_dbc.get_db_type() == 'mysql': 
             self.destination_client = MysqlRunner(self.destination_connection_info)
         else:
             self.destination_client = PsqlRunner(self.destination_connection_info)
@@ -48,7 +49,7 @@ class DatabaseCreator:
         else:
             cur_path = os.getcwd()
 
-            if self.source_connection_info['db_type'] == 'mysql':
+            if self.__source_dbc.get_db_type() == 'mysql':
                 dump_path = get_mysql_bin_path()
             else:
                 dump_path = get_pg_bin_path()
@@ -57,7 +58,7 @@ class DatabaseCreator:
                 os.chdir(dump_path)
 
             dumpsql_path = os.path.join(self.output_path, 'schema_dump.sql')
-            if self.source_connection_info['db_type'] == 'mysql':
+            if self.__source_dbc.get_db_type() == 'mysql':
                 os.system('mysqldump -h {0} -P {1} -u {2} -p{3} --no-data {4} > {5}'
                     .format(
                         self.source_connection_info['host'],
@@ -85,6 +86,7 @@ class DatabaseCreator:
             self.__filter_commands(self.output_path)
             self.destination_client.run(os.path.join(self.output_path, 'dump_create.sql'), self.create_output_path, self.create_error_path, True, True)
 
+    # TODO mysql support for this
     def teardown(self):
         user_schemas = list_all_user_schemas(self.__source_db_connection)
 
@@ -170,6 +172,7 @@ class DatabaseCreator:
             if(constraintCommandFound == False):
                 create_with_no_constraint_commands.append(c)
             else:
+                # TODO mysql support
                 if c.find('FOREIGN KEY') != -1:
                     fk_commands.append(c)
                 elif c.find(' UNIQUE (') != -1:
