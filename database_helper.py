@@ -115,7 +115,6 @@ def run_query(query, conn):
     cur.close()
 
 
-# TODO These should all work fine for mysql except list_all_user_schemas
 def get_table_count(table_name, schema, conn):
     with conn.cursor() as cur:
         cur.execute('SELECT COUNT(*) FROM "{}"."{}"'.format(schema, table_name))
@@ -131,6 +130,7 @@ def list_all_user_schemas(conn):
         cur.execute("select nspname from pg_catalog.pg_namespace where nspname not like 'pg_%' and nspname != 'information_schema';")
         return [r[0] for r in cur.fetchall()]
 
+# TODO should we ignore 'mysql', 'performance_schema' tables?
 def list_all_tables(conn):
     with conn.cursor() as cur:
         cur.execute("""SELECT
