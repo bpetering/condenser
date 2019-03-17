@@ -87,15 +87,15 @@ class DatabaseCreator:
             self.__filter_commands(self.output_path)
             self.destination_client.run(os.path.join(self.output_path, 'dump_create.sql'), self.create_output_path, self.create_error_path, True, True)
 
-    # TODO mysql support for this
     def teardown(self):
+        # TODO needs proper support in mysql?
+        if self.__source_dbc.get_db_type() == 'mysql':
+            return
+
         user_schemas = list_all_user_schemas(self.__source_db_connection)
 
         if len(user_schemas) == 0:
             raise Exception("Couldn't find any non system schemas.")
-
-
-
 
         drop_statements = ["DROP SCHEMA IF EXISTS {} CASCADE;".format(s) for s in user_schemas if s != 'public']
 
