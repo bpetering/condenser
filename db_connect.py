@@ -19,6 +19,9 @@ class DbConnect:
                 raise Exception('Missing required key in database connection info: ' + r)
         if 'password' not in connection_info.keys():
             connection_info['password'] = getpass.getpass('Enter password for {0} on host {1}: '.format(connection_info['user_name'], connection_info['host']))
+        
+        if 'db_type' not in connection_info:
+            connection_info['db_type'] = 'postgres'
 
         self.connection_info = connection_info
 
@@ -30,7 +33,7 @@ class DbConnect:
         ssl_mode = self.connection_info['ssl_mode'] if 'ssl_mode' in self.connection_info else None
         password = self.connection_info['password']
         port = self.connection_info['port']
-        db_type = self.connection_info['db_type'] if 'db_type' in self.connection_info else 'postgres'
+        db_type = self.connection_info['db_type']
 
         if db_type == 'mysql':
             return MySQLdb.connect(
@@ -57,4 +60,7 @@ class DbConnect:
 
     def get_db_connection_info(self):
         return self.connection_info
+
+    def get_db_type(self):
+        return self.connection_info['db_type']
 
