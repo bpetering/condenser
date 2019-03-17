@@ -54,7 +54,6 @@ def copy_rows(source, destination, query, destination_table, destination_schema)
 def create_id_temp_table(conn, schema, col_type):
     table_name = 'temp_table_' + str(uuid.uuid4())
     cursor = conn.cursor()
-    # TODO mysql just needs varchar(50) instead of only 'varchar'
     q = 'CREATE TABLE "{}"."{}" (\n t    {}\n)'.format(schema, table_name, col_type)
     cursor.execute(q)
     cursor.close()

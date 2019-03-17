@@ -182,7 +182,13 @@ class Subset:
     def subset_via_parents(self, table, relationships):
         referencing_tables = database_helper.get_referencing_tables(table, self.__all_tables, self.__source_conn)
 
-        temp_table_name = database_helper.create_id_temp_table(self.__destination_conn, self.temp_schema, 'varchar')
+        # Rather than using different types in different DBs, just use 'text'
+        temp_table_name =
+        database_helper.create_id_temp_table(
+                self.__destination_conn,
+                self.temp_schema, 
+                'text'
+        )
 
         if len(referencing_tables) > 0:
             pk_name = referencing_tables[0]['pk_column_name']
