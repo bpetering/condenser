@@ -34,7 +34,18 @@ class Subset:
 
         for t in sampled_tables:
             columns_query = self.__columns_to_copy(t, relationships)
-            q = 'SELECT {} FROM "{}"."{}" WHERE random() < {}'.format(columns_query, schema_name(t), table_name(t), scalePercent/100)
+            if self.__source_dbc.get_db_type() == 'mysql':
+                rand_func = 'rand'
+            else:
+                rand_func = 'random'
+            q = 'SELECT {} FROM "{}"."{}" WHERE {}() < {}'
+                .format(
+                    columns_query, 
+                    schema_name(t), 
+                    table_name(t), 
+                    rand_func, 
+                    scalePercent/100
+                )
             database_helper.copy_rows(self.__source_conn, self.__destination_conn, q, table_name(t), schema_name(t))
 
         for t in passthrough_tables:
@@ -67,7 +78,18 @@ class Subset:
         start_time = time.time()
         for t in targets:
             columns_query = self.__columns_to_copy(t, relationships)
-            q = 'SELECT {} FROM "{}"."{}" WHERE random() < {}'.format(columns_query, schema_name(t), table_name(t), targets[t]/100)
+            if self.__source_dbc.get_db_type() == 'mysql':
+                rand_func = 'rand'
+            else:
+                rand_func = 'random'
+            q = 'SELECT {} FROM "{}"."{}" WHERE {}() < {}'
+                .format(
+                    columns_query, 
+                    schema_name(t), 
+                    table_name(t), 
+                    rand_func,
+                    targets[t]/100
+                )
             database_helper.copy_rows(self.__source_conn, self.__destination_conn, q, table_name(t), schema_name(t))
         print('Direct target tables completed in {}s'.format(time.time()-start_time))
 
@@ -172,12 +194,19 @@ class Subset:
             q='SELECT "{}" FROM "{}"."{}"'.format(fk_name, schema_name(parent_table), table_name(parent_table))
             database_helper.copy_rows(self.__destination_conn, self.__destination_conn, q, temp_table_name, self.temp_schema)
 
+
         cursor = self.__destination_conn.cursor()
         cursor_name='table_cursor_'+str(uuid.uuid4()).replace('-','')
         q ='DECLARE {} SCROLL CURSOR FOR SELECT DISTINCT t FROM "{}"."{}"'.format(cursor_name, self.temp_schema, temp_table_name)
         cursor.execute(q)
+
         fetch_row_count = 10000
         while True:
+            # If the DB has 'FETCH FORWARD n' support, use it, otherwise do the slow equivalent
+            dest_conn_info = self.__destination_dbc.get_db_connection_info()
+            if dest_conn_info['db_type'] == 'mysql':
+                pass
+            else:
             cursor.execute('FETCH FORWARD {} FROM {}'.format(fetch_row_count, cursor_name))
             if cursor.rowcount == 0:
                 break
