@@ -12,6 +12,7 @@ class DatabaseCreator:
         self.source_connection_info = source_dbc.get_db_connection_info()
         self.__source_db_connection = source_dbc.get_db_connection()
         self.__source_dbc = source_dbc
+        self.__destination_dbc = destination_dbc
 
         self.use_existing_dump = use_existing_dump
         if destination_dbc.get_db_type() == 'mysql': 
@@ -120,7 +121,11 @@ class DatabaseCreator:
             fp.close()
 
         if len(lines) > 0:
-            raise Exception('Creating tables failed.  See {} for details'.format(self.create_error_path))
+            if self.__destination_dbc.get_db_type() == 'mysql':
+                if len(lines) > 1 or not 'Using a password on the command line' in lines[0]:
+                    raise Exception('Creating tables failed.  See {} for details'.format(self.create_error_path))
+            else:
+                raise Exception('Creating tables failed.  See {} for details'.format(self.create_error_path))
 
     def validate_constraints(self):
         with open(self.add_constraint_error_path,'r',encoding='utf-8') as fp:
