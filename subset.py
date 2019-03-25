@@ -40,8 +40,7 @@ class Subset:
                 rand_func = 'rand'
             else:
                 rand_func = 'random'
-            q = 'SELECT {} FROM "{}"."{}" WHERE {}() < {}'
-                .format(
+            q = 'SELECT {} FROM "{}"."{}" WHERE {}() < {}'.format(
                     columns_query, 
                     schema_name(t), 
                     table_name(t), 
@@ -101,8 +100,7 @@ class Subset:
                 rand_func = 'rand'
             else:
                 rand_func = 'random'
-            q = 'SELECT {} FROM "{}"."{}" WHERE {}() < {}'
-                .format(
+            q = 'SELECT {} FROM "{}"."{}" WHERE {}() < {}'.format(
                     columns_query, 
                     schema_name(t), 
                     table_name(t), 
@@ -228,11 +226,10 @@ class Subset:
         source_db_type = self.__source_dbc.get_db_type()
 
         # Rather than using different types in different DBs, just use 'text'
-        temp_table_name =
-        database_helper.create_id_temp_table(
-                self.__destination_conn,
-                self.temp_schema, 
-                'text'
+        temp_table_name = database_helper.create_id_temp_table(
+            self.__destination_conn,
+            self.temp_schema, 
+            'text'
         )
 
         if len(referencing_tables) > 0:
@@ -268,23 +265,21 @@ class Subset:
             
             ids = ["'" + str(row[0]) + "'" for row in cursor.fetchall() if row[0] is not None]
 
-            if len(ids) == 0:
-                break
-
-            # TODO create function 
-            ids_to_query = ','.join(ids)
-            columns_query = self.__columns_to_copy(table, relationships)
-            q = 'SELECT {} FROM "{}"."{}" WHERE {} IN ({})'.format(columns_query, schema_name(table), table_name(table), pk_name, ids_to_query)
-            temp_destination_conn = self.__destination_dbc.get_db_connection()
-            database_helper.copy_rows(
-                self.__source_conn, 
-                temp_destination_conn, 
-                q, 
-                table_name(table), 
-                schema_name(table),
-                source_db_type
-            )
-            temp_destination_conn.close()
+            if len(ids) != 0:
+                # TODO create function 
+                ids_to_query = ','.join(ids)
+                columns_query = self.__columns_to_copy(table, relationships)
+                q = 'SELECT {} FROM "{}"."{}" WHERE {} IN ({})'.format(columns_query, schema_name(table), table_name(table), pk_name, ids_to_query)
+                temp_destination_conn = self.__destination_dbc.get_db_connection()
+                database_helper.copy_rows(
+                    self.__source_conn, 
+                    temp_destination_conn, 
+                    q, 
+                    table_name(table), 
+                    schema_name(table),
+                    source_db_type
+                )
+                temp_destination_conn.close()
 
         else:
 
